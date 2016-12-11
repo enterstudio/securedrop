@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import functools
 
 from flask import (Flask, request, render_template, send_file, redirect, flash,
@@ -59,6 +59,17 @@ def get_source(sid):
 @app.before_request
 def setup_g():
     """Store commonly used values in Flask's special g object"""
+    session_expires = session.get('session-expires')
+    if session_expires is None:
+        session.pop('uid', None)
+    else:
+        if datetime.utcnow() >= session_expires:
+            session.pop('uid', None)
+            session.pop('session-expires', None)
+        else:
+            session['session-expires'] = datetime.utcnow() + \
+                    timedelta(minutes=30)
+
     uid = session.get('uid', None)
     if uid:
         g.user = Journalist.query.get(uid)
@@ -136,6 +147,8 @@ def login():
             db_session.commit()
 
             session['uid'] = user.id
+            session['session-expires'] = datetime.utcnow() + \
+                    timedelta(minutes=30)
             return redirect(url_for('index'))
 
     return render_template("login.html")
@@ -144,6 +157,7 @@ def login():
 @app.route('/logout')
 def logout():
     session.pop('uid', None)
+    session.pop('session-expires', None)
     return redirect(url_for('index'))
 
 
@@ -665,7 +679,7 @@ def download(zip_basename, submissions):
 
     :param str zip_basename: The basename of the zipfile download.
 
-    :param list submissions: A list of :class:`db.Submission`s to 
+    :param list submissions: A list of :class:`db.Submission`s to
                              include in the zipfile.
     """
     # Mark the submissions that are about to be downloaded as such

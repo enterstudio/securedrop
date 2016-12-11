@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from cStringIO import StringIO
 import subprocess
@@ -85,6 +85,19 @@ def ignore_static(f):
 @ignore_static
 def setup_g():
     """Store commonly used values in Flask's special g object"""
+    # first, check then expire sessino
+    session_expires = session.get('session-expires')
+    if session_expires is None:
+        session.pop('codename', None)
+        session.pop('logged_in', None)
+    else:
+        if datetime.utcnow() >= session_expires:
+            session.pop('codename', None)
+            session.pop('logged_in', None)
+        else:
+            session['session-expires'] = datetime.utcnow() + \
+                    timedelta(minutes=30)
+
     # ignore_static here because `crypto_util.hash_codename` is scrypt (very
     # time consuming), and we don't need to waste time running if we're just
     # serving a static resource that won't need to access these common values.
@@ -102,8 +115,8 @@ def setup_g():
             app.logger.error(
                 "Found no Sources when one was expected: %s" %
                 (e,))
-            del session['logged_in']
-            del session['codename']
+            session.pop('logged_in', None)
+            session.pop('codename', None)
             return redirect(url_for('index'))
         g.loc = store.path(g.sid)
 
@@ -166,6 +179,7 @@ def generate():
 
     codename = generate_unique_codename(num_words)
     session['codename'] = codename
+    session['session-expires'] = datetime.utcnow() + timedelta(minutes=30)
     return render_template(
         'generate.html',
         codename=codename,
@@ -188,6 +202,7 @@ def create():
         os.mkdir(store.path(sid))
 
     session['logged_in'] = True
+    session['session-expires'] = datetime.utcnow() + timedelta(minutes=30)
     return redirect(url_for('lookup'))
 
 
@@ -388,6 +403,8 @@ def login():
         codename = request.form['codename'].strip()
         if valid_codename(codename):
             session.update(codename=codename, logged_in=True)
+            session['session-expires'] = datetime.utcnow() + \
+                    timedelta(minutes=30)
             return redirect(url_for('lookup', from_login='1'))
         else:
             app.logger.info(
