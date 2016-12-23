@@ -19,7 +19,7 @@ import template_filters
 from db import (db_session, Source, Journalist, Submission, Reply,
                 SourceStar, get_one_or_else, NoResultFound,
                 WrongPasswordException, BadTokenException,
-                LoginThrottledException, InvalidPasswordLength)
+                LoginThrottledException, PasswordError)
 import worker
 
 app = Flask(__name__, template_folder=config.JOURNALIST_TEMPLATES_DIR)
@@ -165,11 +165,16 @@ def admin_add_user():
             form_valid = False
             flash("Missing username", "error")
 
-        password = request.form['password']
-        password_again = request.form['password_again']
-        if password != password_again:
-            form_valid = False
-            flash("Passwords didn't match", "error")
+        while True:
+            password = crypto_util.genrandomid(7)
+            if len(password) > Journalist.MAX_PASSWORD_LEN:
+                continue
+
+            flash(("The journalist's password has been set to: '{}'. "
+                   "Please save this in your KeePass and securely "
+                   "transfer it to them via encrypted USB.").format(password),
+                  'notification')
+            break
 
         is_admin = bool(request.form.get('is_admin'))
 
@@ -184,10 +189,6 @@ def admin_add_user():
                                       otp_secret=otp_secret)
                 db_session.add(new_user)
                 db_session.commit()
-            except InvalidPasswordLength:
-                form_valid = False
-                flash("Your password is too long (maximum length {} characters)".format(
-                        Journalist.MAX_PASSWORD_LEN), "error")
             except IntegrityError as e:
                 form_valid = False
                 if "username is not unique" in str(e):
@@ -261,19 +262,18 @@ def admin_edit_user(user_id):
             else:
                 user.username = new_username
 
-        if request.form['password'] != "":
-            if request.form['password'] != request.form['password_again']:
-                flash("Passwords didn't match", "error")
-                return redirect(url_for("admin_edit_user", user_id=user_id))
-            try:
-                user.set_password(request.form['password'])
-                flash("Password successfully changed for user {} ".format(
-                    user.username), "notification")
-            except InvalidPasswordLength:
-                flash("Your password is too long "
-                      "(maximum length {} characters)".format(
-                      Journalist.MAX_PASSWORD_LEN), "error")
-                return redirect(url_for("admin_edit_user", user_id=user_id))
+        if request.form['new_password'] in ('checked', 'yes', 'on'):
+            while True:
+                password = crypto_util.genrandomid(7)
+                try:
+                    user.set_password(password)
+                    flash(("The journalist's password has been set to: '{}'. "
+                           "Please save this in your KeePass and securely "
+                           "transfer it to them via encrypted USB.").format(password),
+                          'notification')
+                    break
+                except PasswordError:
+                    continue
 
         user.is_admin = bool(request.form.get('is_admin'))
 
@@ -306,24 +306,25 @@ def edit_account():
     user = g.user
 
     if request.method == 'POST':
-        if request.form['password'] != "":
-            if request.form['password'] != request.form['password_again']:
-                flash("Passwords didn't match", "error")
-                return redirect(url_for("edit_account"))
-            try:
-                user.set_password(request.form['password'])
-            except InvalidPasswordLength:
-                flash("Your password is too long "
-                      "(maximum length {} characters)".format(
-                      Journalist.MAX_PASSWORD_LEN), "error")
-                return redirect(url_for("edit_account"))
+        password = None
+        if request.form['new_password'] in ('checked', 'yes', 'on'):
+            while True:
+                try:
+                    password = crypto_util.genrandomid(7)
+                    user.set_password(password)
+                    break
+                except PasswordError:
+                    continue
 
         try:
             db_session.add(user)
             db_session.commit()
-            flash(
-                "Password successfully changed!",
-                "notification")
+
+            if password is not None:
+                flash(("Your password has been set to: '{}'. "
+                       "Please save your password in your KeePass.")
+                       .format(password),
+                     'notification')
         except Exception as e:
             flash(
                 "An unknown error occurred, please inform your administrator",
@@ -373,6 +374,38 @@ def account_reset_two_factor_hotp():
         return redirect(url_for('account_new_two_factor'))
     else:
         return render_template('account_edit_hotp_secret.html')
+
+
+@app.route('/account/new-password', methods=['GET', 'POST'])
+@login_required
+def new_password():
+    user = g.user
+
+    if request.method == 'POST':
+        generated_password = request.form.get('generated_password')
+        entered_password = request.form.get('password')
+        
+        if generated_password != entered_password:
+            flash('The password you typed did not match the password we '
+                  'generated!', 'error')
+            return redirect(url_for('new_password'))
+        else:
+            user.set_password(entered_password)
+            flash("Your password was successfully updated! Don't forget to "
+                  "save it in your KeePass.", 'notification')
+            db_session.commit()
+            return redirect(url_for('edit_account'))
+    else:
+        while True:
+            password = crypto_util.genrandomid(7)
+            try:
+                user.check_password_acceptable(password)
+                break
+            except PasswordError:
+                continue
+
+        return render_template('new_password.html',
+                               generated_password=password)
 
 
 def make_star_true(sid):
