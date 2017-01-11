@@ -14,7 +14,7 @@
     - pip
 
 - name: Copy install_files/securedrop-app-code dir to build path
-  command:  cp -R {{ securedrop_app_code_deb_config }} /tmp/{{ securedrop_app_code_deb }}/
+  command: cp -R {{ securedrop_app_code_deb_config }} /tmp/{{ securedrop_app_code_deb }}/
   args:
     creates: /tmp/{{ securedrop_app_code_deb }}/
   tags:
@@ -42,19 +42,30 @@
     - build
 
 - name: Copy securedrop to build path
-  command: cp -R {{ build_app_code_dir }} /tmp/{{ securedrop_app_code_deb }}/var/www/
+  shell: >
+    cp    {{ build_app_code_dir }}/COPYING /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/crypto_util.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/db.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp -r {{ build_app_code_dir }}/dictionaries /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/journalist.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp -r {{ build_app_code_dir }}/journalist_templates /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp -r {{ build_app_code_dir }}/management /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/manage.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/request_that_secures_file_uploads.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp -r {{ build_app_code_dir }}/requirements /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/secure_tempfile.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/source.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp -r {{ build_app_code_dir }}/source_templates /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp -r {{ build_app_code_dir }}/static /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/store.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/template_filters.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/version.py /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/wordlist /tmp/{{ securedrop_app_code_deb }}/var/www/ &&
+    cp    {{ build_app_code_dir }}/worker.py /tmp/{{ securedrop_app_code_deb }}/var/www/
   args:
     creates: /tmp/{{ securedrop_app_code_deb }}/var/www/{{ build_app_code_dir }}
   tags:
     - build
-
-- name: Remove config.py from build path.
-  file:
-    state: absent
-    dest: /tmp/{{ securedrop_app_code_deb }}/var/www/securedrop/config.py
-  tags:
-    - build
-    - cleanup
 
 - name: Create pip wheel archive for Debian package requirements.
   command: pip wheel -r {{ securedrop_pip_requirements }} -w /tmp/{{ securedrop_app_code_deb }}/var/securedrop/wheelhouse
